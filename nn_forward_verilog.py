@@ -1,6 +1,7 @@
 # 使用经过定点化后的模型进行相关实验测试
 # 作为Verilog/FPGA/ASIC计算结果的参考
 # 这一过程亦可在MATLAB中进行,但MATLAB不方便进行量化模型的模拟
+# 运行此文件前请先运行main获得各类参数文件
 import torchvision.datasets
 from torch.utils.data import DataLoader
 
@@ -10,6 +11,7 @@ from nn_quant_basic import *
 # 比较两个模型结果之间的差距,打印相关信息
 def error_calculate(res1, res2, name):
     print("________________________{}_res____________________________".format(name))
+    # 需要查看中间结果时, 取消注释下面两行, 默认只查看错误信息
     # print("res1:{}\nres2:{}".format(res1, res2))
     # print("error:{}".format((res1 - res2).to(torch.int8)))
     print("error_times:{}".format((res1 != res2).sum()))
@@ -76,7 +78,7 @@ print("model_int8_fix_out:{}".format(fix_net_out))
 print("model_int8_out:    {}".format(q_net_out))
 
 
-# 整个测试数据集进行测试,统计总的正确率
+# 整个测试数据集进行测试,统计总的正确率, 不需要时可以直接注释掉
 # # 用测试数据集比较量化模型、定点量化模型、浮点模型的预测准确性
 i = 1
 total_accuracy_int8 = 0  # 预测正确数目统计
@@ -113,11 +115,11 @@ for data in test_loader:
 print("浮点模型预测正确率:{}".format(total_accuracy_fp32 / total_test_times))
 print("量化模型预测正确率:{}".format(total_accuracy_int8 / total_test_times))
 print("定点量化模型预测正确率:{}".format(total_accuracy_fix / total_test_times))
-print("浮点模型-->定点模型, 预测正确率下降:{}%".format(
+print("浮点模型-->量化模型, 预测正确率下降:{:.3f}%".format(
     ((total_accuracy_fp32 - total_accuracy_int8) / total_accuracy_fp32) * 100))
-print("定点模型-->量化定点模型, 预测正确率下降:{}%".format(
+print("量化模型-->定点量化模型, 预测正确率下降:{:.3f}%".format(
     ((total_accuracy_int8 - total_accuracy_fix) / total_accuracy_int8) * 100))
-print("浮点模型-->量化定点模型, 预测正确率下降:{}%".format(
+print("浮点模型-->定点量化模型, 预测正确率下降:{:.3f}%".format(
     ((total_accuracy_fp32 - total_accuracy_fix) / total_accuracy_fp32) * 100))
 
 

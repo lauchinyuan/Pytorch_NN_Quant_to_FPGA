@@ -5,10 +5,19 @@ import torch
 from model import cifar10_net
 
 
-def quant_export(network_class_quant, quant_model_dict_path: str, bias_dict={},
+def quant_export(network_class_quant, quant_model_dict_path: str,
                  quant_dict={}, scale_dict={}, fix_point_dict={}, zero_point_dict={},
                  txt_path_dir: str = "txt"):
-    # 量化后模型的加载
+    # network_class_quant: 加入量化节点的浮点网络实例
+    # quant_model_dict_path: 量化后模型参数字典路径
+    # 后续FPGA运算参考模拟程序nn_forward_verilog、输入图片量化程序img_quant_export中会用到的各种参数字典如下:
+    # quant_dict: 保存各层量化参数(scale\zero_point)的字典
+    # scale_dict: 保存各层输入数据(activation)scale值的字典
+    # zero_point_dict: 保存各层输入数据(activation)zero_point值的字典
+    # fix_point_dict: 将系数M=(scale_in * scale_weight/scale_out)这一浮点数进行定点量化后的结果, 保存到该字典
+    # txt_path_dir: 保存txt文件的文件夹路径名称
+
+    # 量化后模型的加载,与pytorch量化处理保持一致
     model_fp32 = network_class_quant
     state_dict = torch.load(quant_model_dict_path)
     model_fp32.qconfig = torch.quantization.get_default_qconfig('x86')
@@ -16,6 +25,7 @@ def quant_export(network_class_quant, quant_model_dict_path: str, bias_dict={},
     model_int8 = torch.quantization.convert(load_model_prepared)
     model_int8.load_state_dict(state_dict)
 
+    bias_dict = {}  # 保存各层浮点偏置bias的字典, 对此字典的值进行提前量化, 最后保存为txt文档
     # 量化后模型参数导出
     for key in state_dict:
         # print(key)
