@@ -1,7 +1,7 @@
 # 模拟量化神经网络中的各种OP(卷积、池化等)，利用量化后的定点数方案
 import numpy as np
 import torch
-from torch.nn import Conv2d, MaxPool2d, Flatten, Linear
+from torch.nn import Conv2d, MaxPool2d, Flatten, Linear, ReLU
 
 from model import cifar10_net
 from nn_quant_export import quant_export
@@ -11,7 +11,8 @@ model_fp32 = cifar10_net(is_quant=True)
 zero_point_dict = {}
 quant_dict = {}
 fix_point_dict = {}
-quant_export(network_class_quant=model_fp32, quant_model_dict_path="./model_pth/model_int8.pth", quant_dict=quant_dict, zero_point_dict=zero_point_dict,
+quant_export(network_class_quant=model_fp32, quant_model_dict_path="./model_pth/model_int8.pth", quant_dict=quant_dict,
+             zero_point_dict=zero_point_dict,
              fix_point_dict=fix_point_dict)
 
 
@@ -28,12 +29,19 @@ class q_cifar10:
     def __init__(self, n, is_get_intermediate=False):
         # 实例化神经网络各层Class,从量化模型导出的txt文件中读取数据
         self.conv1 = conv2d_txt(in_channels=3, out_channels=32, name="conv1", kernel_size=5, padding=2, n=n)
+        self.relu1 = relu_q(name="relu1")
         self.maxpool1 = max_pooling_q(kernel_size=2)
+
         self.conv2 = conv2d_txt(in_channels=32, out_channels=32, name="conv2", kernel_size=5, padding=2, n=n)
+        self.relu2 = relu_q(name="relu2")
         self.maxpool2 = max_pooling_q(kernel_size=2)
+
         self.conv3 = conv2d_txt(in_channels=32, out_channels=64, name="conv3", kernel_size=5, padding=2, n=n)
+        self.relu3 = relu_q(name="relu3")
         self.maxpool3 = max_pooling_q(kernel_size=2)
+
         self.flatten = Flatten()
+
         self.linear1 = linear_txt(in_features=1024, out_features=64, n=n, name="linear1")
         self.linear2 = linear_txt(in_features=64, out_features=10, n=n, name="linear2")
         self.is_get_intermediate = is_get_intermediate
@@ -44,6 +52,9 @@ class q_cifar10:
             self.maxpool1_res = None
             self.maxpool2_res = None
             self.maxpool3_res = None
+            self.relu1_res = None
+            self.relu2_res = None
+            self.relu3_res = None
             self.flatten_res = None
             self.linear1_res = None
             self.linear2_res = None
@@ -52,28 +63,41 @@ class q_cifar10:
         if self.is_get_intermediate:  # 需要保存中间结果属性
             x = self.conv1.Conv2d(x)
             self.conv1_res = x.detach()
+            x = self.relu1.Relu(x)
+            self.relu1_res = x.detach()
             x = self.maxpool1.Maxpooling(x)
             self.maxpool1_res = x.detach()
+
             x = self.conv2.Conv2d(x)
             self.conv2_res = x.detach()
+            x = self.relu2.Relu(x)
+            self.relu2_res = x.detach()
             x = self.maxpool2.Maxpooling(x)
             self.maxpool2_res = x.detach()
+
             x = self.conv3.Conv2d(x)
             self.conv3_res = x.detach()
+            x = self.relu3.Relu(x)
+            self.relu3_res = x.detach()
             x = self.maxpool3.Maxpooling(x)
             self.maxpool3_res = x.detach()
+
             x = self.flatten(x)
             self.flatten_res = x.detach()
+
             x = self.linear1.Linear(x)
             self.linear1_res = x.detach()
             x = self.linear2.Linear(x)
             self.linear2_res = x.detach()
         else:
             x = self.conv1.Conv2d(x)
+            x = self.relu1.Relu(x)
             x = self.maxpool1.Maxpooling(x)
             x = self.conv2.Conv2d(x)
+            x = self.relu2.Relu(x)
             x = self.maxpool2.Maxpooling(x)
             x = self.conv3.Conv2d(x)
+            x = self.relu3.Relu(x)
             x = self.maxpool3.Maxpooling(x)
             x = self.flatten(x)
             x = self.linear1.Linear(x)
@@ -101,6 +125,7 @@ def txt_hex_to_dec_list(file_path):
     str_list = [s.replace("\n", "") for s in str_list]  # 去掉列表中字符串的\n
     return [int(s, 16) for s in str_list]  # 转换为十进制list并输出
 
+
 # 从输入的像素十进制字符列表中读取第n张图片,
 # 将访问txt文件并转为十进制list的任务放在函数交给txt_hex_to_dec_list()函数完成,减少读取文件开销
 def read_img_from_str_list(int_str_list, n, img_channel, img_size_h, img_size_w):
@@ -109,6 +134,7 @@ def read_img_from_str_list(int_str_list, n, img_channel, img_size_h, img_size_w)
     idx_end = n * img_channel * img_size_h * img_size_w
     img = np.array(int_str_list[idx_start:idx_end], dtype="uint8")
     return torch.from_numpy(img).reshape((1, img_channel, img_size_h, img_size_w))
+
 
 # 从txt文件读取量化后的权重, 返回相应大小的tensor
 def read_conv_weight(file_path, kernel_size, in_channels, out_channels):
@@ -165,6 +191,17 @@ def q_conv(img, w, b, name, in_channels, out_channels, kernel_size, padding, n):
     scale_conv_res = ((2 ** (-n) * fix_point_dict["{}.fix.scale".format(name)]) * conv_res).to(torch.int8)
     # 加上输出对应的zero_point, 即为量化卷积计算的结果
     return (scale_conv_res + quant_dict["{}.out.zero_point".format(name)]).to(torch.uint8)
+
+
+# 量化版本的Relu激活函数, 对于给定量化值, 当值小于其量化参数zero_point时,将数据转换为zero_point, 否则数据保持不变
+# 相应的zero_point从与name对应的quant_dict字典中获取, name的命名规范为"relux", 其中x为指定阿拉伯数字
+# conv+pooling+relu以及conv+relu的组合顺序可以使用该函数,因为在这种情况下relu输出数据的scale和zero_point保持不变
+# 只要知道relu并不改变scale和zero_point即可, 即本函数中使用到的zero_point就是来自上层的zero_point, 在rulu零点与conv零点不同时
+# 更换zero_point数据来源即可
+def q_relu(img, name):
+    zero = quant_dict[name.replace("relu", "conv") + ".out.zero_point"]  # 对应卷积层的量化参数zero_point
+    img_zero = torch.zeros_like(img) + zero  # 创建一个"零点"矩阵, 此处"零点"指量化后零点
+    return torch.where(img < zero, img_zero, img)  # 小于"零点"的值替换为"zero_point"
 
 
 # 最大池化,量化版本和非量化版本一致
@@ -248,3 +285,12 @@ class max_pooling_q:
     def Maxpooling(self, img):
         # 调用自定义的池化函数
         return q_max_pooling(kernel_size=self.kernel_size, img=img)
+
+class relu_q:
+    def __init__(self, name):
+        self.name = name
+    def Relu(self, x):
+        return q_relu(img=x, name=self.name)
+
+
+

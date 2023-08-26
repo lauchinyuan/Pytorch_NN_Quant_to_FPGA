@@ -120,33 +120,31 @@ def view_dict(dict):
         print("{}: {}".format(key, dict[key]))
 
 
-# quant_dict_path = "./model_pth/model_int8.pth"
-# model_fp32 = cifar10_net(is_quant=True)
-# scale_dict = {}
-# zero_point_dict = {}
-# bias_dict = {}
-# quant_dict = {}
-# fix_point_dict = {}
-# quant_export(network_class_quant=model_fp32, quant_model_dict_path=quant_dict_path,
-#              bias_dict=bias_dict, quant_dict=quant_dict, scale_dict=scale_dict, zero_point_dict=zero_point_dict,
-#              fix_point_dict=fix_point_dict)
+if __name__ == "__main__":
+    quant_dict_path = "./model_pth/model_int8.pth"
+    model_fp32 = cifar10_net(is_quant=True)
+    scale_dict = {}
+    zero_point_dict = {}
+    quant_dict = {}
+    fix_point_dict = {}
+    quant_export(network_class_quant=model_fp32, quant_model_dict_path=quant_dict_path,
+                 quant_dict=quant_dict, scale_dict=scale_dict, zero_point_dict=zero_point_dict,
+                 fix_point_dict=fix_point_dict)
+
+    # 查看各层量化参数
+    print("_________________________quant_____________________________")
+    view_dict(quant_dict)
+
+    # 查看scale字典数据
+    print("_________________________scale_____________________________")
+    view_dict(scale_dict)
+
+    # 查看fix_point字典数据
+    print("_________________________fix_____________________________")
+    view_dict(fix_point_dict)
+
+    # zero_point
+    print("__________________________zero___________________________")
+    view_dict(zero_point_dict)
 
 
-# # 查看各层量化参数
-# print("_________________________quant_____________________________")
-# view_dict(quant_dict)
-#
-# # 查看bias字典数据
-# print("_________________________bias_____________________________")
-# view_dict(bias_dict)
-#
-# # 查看scale字典数据
-# print("_________________________scale_____________________________")
-# view_dict(scale_dict)
-#
-# # 查看fix_point字典数据
-# print("_________________________fix_____________________________")
-# view_dict(fix_point_dict)
-#
-# print("__________________________zero___________________________")
-# view_dict(zero_point_dict)
