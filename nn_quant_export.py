@@ -1,4 +1,6 @@
 #  量化后模型参数导出, 以便在FPGA上实现推理
+import os.path
+
 import numpy as np
 import torch
 
@@ -7,7 +9,7 @@ from model import cifar10_net
 
 def quant_export(network_class_quant, quant_model_dict_path: str,
                  quant_dict={}, scale_dict={}, fix_point_dict={}, zero_point_dict={},
-                 txt_path_dir: str = "txt"):
+                 txt_path_dir: str = "txt", coe_path_dir: str = "coe"):
     # network_class_quant: 加入量化节点的浮点网络实例
     # quant_model_dict_path: 量化后模型参数字典路径
     # 后续FPGA运算参考模拟程序nn_forward_verilog、输入图片量化程序img_quant_export中会用到的各种参数字典如下:
@@ -16,6 +18,12 @@ def quant_export(network_class_quant, quant_model_dict_path: str,
     # zero_point_dict: 保存各层输入数据(activation)zero_point值的字典
     # fix_point_dict: 将系数M=(scale_in * scale_weight/scale_out)这一浮点数进行定点量化后的结果, 保存到该字典
     # txt_path_dir: 保存txt文件的文件夹路径名称
+
+    # 创建相关文件夹
+    if not os.path.exists("./{}".format(txt_path_dir)):
+        os.makedirs("./{}".format(txt_path_dir))
+    if not os.path.exists("./{}".format(coe_path_dir)):
+        os.makedirs("./{}".format(coe_path_dir))
 
     # 量化后模型的加载,与pytorch量化处理保持一致
     model_fp32 = network_class_quant
@@ -42,6 +50,10 @@ def quant_export(network_class_quant, quant_model_dict_path: str,
             weight_int_np = weight_int.numpy().astype("uint8")
             np.savetxt("./{}/{}_int8.txt".format(txt_path_dir, key), weight_int_np, fmt="%02x")
 
+            # 保存为coe文件
+            coe_path = "./{}/{}_int8.coe".format(coe_path_dir, key)
+            write_np2coe(path=coe_path, data_np=weight_int_np, radix=16, fmt="{:02x}")
+
         # 获取各层输出的Zero_point & scale, 保存到量化参数字典
         # 注意这里输出的是各层输出结果的量化参数, 而不是权重的量化参数
         if ("scale" in key) or ("zero_point" in key):
@@ -63,9 +75,14 @@ def quant_export(network_class_quant, quant_model_dict_path: str,
             weight_int = torch.reshape(w.int_repr(), (-1, 1))
             weight_int_np = weight_int.numpy().astype("uint8")
             # print(weight_int_np)
-            np.savetxt(
-                "./{}/".format(txt_path_dir) + key.replace("_packed_params._packed_params", "") + "weight_int8.txt",
-                weight_int_np, fmt="%02x")
+            txt_path = "./{}/".format(txt_path_dir) + key.replace("_packed_params._packed_params", "") + \
+                       "weight_int8.txt"
+            np.savetxt(txt_path, weight_int_np, fmt="%02x")
+
+            # 保存为coe文件
+            coe_path = "./{}/".format(coe_path_dir) + key.replace("_packed_params._packed_params", "") + \
+                       "weight_int8.coe"
+            write_np2coe(path=coe_path, data_np=weight_int_np, radix=16, fmt="{:02x}")
 
     # 对bias进行量化处理需要用到两个输入变量的scale相乘(s1*s2),
     # 为了方便使用字典key,将原来使用previous_layer.out.scale作为key的字典重新改为以next_layer.in.scale
@@ -102,6 +119,10 @@ def quant_export(network_class_quant, quant_model_dict_path: str,
         # 保存到txt
         np.savetxt("./{}/".format(txt_path_dir) + key + "_int32.txt", b_q_int, fmt="%08x")
 
+        # 保存到coe
+        coe_path = "./{}/".format(coe_path_dir) + key + "_int32.coe"
+        write_np2coe(path=coe_path, data_np=b_q_int, radix=16, fmt="{:08x}")
+
     # 依据scale字典, 计算[s1(in.scale)*s2(weight.scale)]/s3(out.scale)经过n位定点量化后的值,然后保存到字典
     n = 16
     for key in scale_dict:
@@ -110,7 +131,7 @@ def quant_export(network_class_quant, quant_model_dict_path: str,
         s2 = quant_dict[key.replace("in.scale", "weight.scale")]
         s3 = quant_dict[key.replace("in.scale", "out.scale")]
         M = s1 * s2 / s3
-        M_int = int(M * 2 ** n)  # 定点量化后的值
+        M_int = int(M * 2**n)  # 定点量化后的值
         fix_point_dict[key.replace(".in", ".fix")] = M_int
 
 
@@ -118,6 +139,28 @@ def quant_export(network_class_quant, quant_model_dict_path: str,
 def view_dict(dict):
     for key in dict:
         print("{}: {}".format(key, dict[key]))
+
+
+def write_np2coe(path: str, data_np, radix: int = 16, fmt: str = "{:02x}"):
+    # 将numpy数据转换为vivado ROM 初始化coe文件
+
+    # path:  欲保存的路径
+    # radix: 保存的进制
+    # fmt:   格式指定符
+    with open(path, "w") as f:
+        # coe文件的文件头
+        coe_title1 = "MEMORY_INITIALIZATION_RADIX = {};".format(radix)  # 进制
+        coe_title2 = "MEMORY_INITIALIZATION_VECTOR = "
+        # 写入coe文件头
+        f.write(coe_title1 + "\n")
+        f.write(coe_title2 + "\n")
+        # 写入中间数据, 以","结尾
+        for i in range(len(data_np) - 1):
+            data = int(data_np[i])
+            f.write(("{},\n".format(fmt)).format(data))
+        # 写入最后一个数据, 以";"结尾
+        data = int(data_np[-1])
+        f.write(("{};".format(fmt)).format(data))
 
 
 if __name__ == "__main__":
@@ -146,5 +189,3 @@ if __name__ == "__main__":
     # zero_point
     print("__________________________zero___________________________")
     view_dict(zero_point_dict)
-
-

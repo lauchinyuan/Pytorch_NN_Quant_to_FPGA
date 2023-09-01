@@ -1,3 +1,4 @@
+import os
 import time
 
 import torch
@@ -9,10 +10,14 @@ from torch.utils.data import DataLoader
 
 
 def model_train(network_class, out_dict_dir: str = "model_pth", batch_size: int = 64,
-                lr: float = 0.001, epoch: int = 2500):
+                lr: float = 0.001, epoch: int = 20, n: int = 20):
     # out_dict_dir: 输出模型文件保存的文件夹名称
     # lr： 学习率
     # epoch: 训练轮数
+    # n: 每n个epoch训练保存一次
+
+    if not os.path.exists("./{}".format(out_dict_dir)):  # 若不存在文件夹则创建
+        os.makedirs("./{}".format(out_dict_dir))
 
     # 准备数据集
     train_data = torchvision.datasets.CIFAR10("./dataset", download=True, train=True,
@@ -48,8 +53,6 @@ def model_train(network_class, out_dict_dir: str = "model_pth", batch_size: int 
 
     # 添加tensorboard可视化工具
     writer = SummaryWriter("logs")
-    # 训练的轮数
-    epoch = epoch
     start_clk = time.time()  # 程序时间统计,计数开始
     test_data_size = len(test_data)
     for i in range(epoch):
@@ -97,9 +100,9 @@ def model_train(network_class, out_dict_dir: str = "model_pth", batch_size: int 
         total_test_step = total_test_step + 1
 
         # 保存训练好的模型
-        if i % 1 == 0:  # 每100轮训练保存一次
-            torch.save(model, "./{}/model_{}.pth".format(out_dict_dir, i))  # 保存结构和参数
-            torch.save(model.state_dict(), "./{}/model_dict_{}.pth".format(out_dict_dir, i))  # 保存成字典
+        if (i+1) % n == 0:
+            torch.save(model, "./{}/model_{}.pth".format(out_dict_dir, i+1))  # 保存结构和参数
+            torch.save(model.state_dict(), "./{}/model_dict_{}.pth".format(out_dict_dir, i+1))  # 保存成字典
 
         # 每个epoch统计一次时间, 为了效率可以注释掉
         end_clk = time.time()
