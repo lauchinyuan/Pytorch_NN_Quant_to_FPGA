@@ -1,6 +1,6 @@
 ### 概述
 
-本工程使用Pytorch库完成简单的神经网络的**构建、训练、训练后静态量化（post training static quantization）、量化模型参数导出、定点数计算模拟**，实现了将训练后的模型导出为hex格式保存的txt文件， 以便后续通过testbench读取文件数据在FPGA/ASIC上进行神经网络计算功能仿真。本工程的重点在于参数的量化和导出，原始浮点模型并没有训练得很好，图1是总的结果概览。
+本工程使用Pytorch库完成简单的神经网络的**构建、训练、训练后静态量化（post training static quantization）、量化模型参数导出、定点数计算模拟**，实现了将训练后的模型导出为hex格式保存的txt/coe文件， 以便后续通过testbench读取文件数据在FPGA/ASIC上进行神经网络计算功能仿真。本工程的重点在于参数的量化和导出，原始浮点模型并没有训练得很好，图1是总的结果概览。
 
 ![](image/fix_result.jpg)
 
@@ -35,7 +35,7 @@ pip install -r requirements.txt
 
 [nn_quant_export.py](nn_quant_export.py)定义了量化后模型参数(weights、bias)导出的处理过程。对于量化相关的参数（scale和zero_point）， 则保存为字典形式。
 
-[img_quant_export.py](img_quant_export.py)定义了img_quant_export()方法，将输入图片像素量化为uint8类型，并保存到txt文件中，供硬件使用。这相当于在计算机上提前完成了浮点输入数据的量化工作，量化过程需要用到量化模型scale参数字典(scale_dict)和zero_point参数字典， 该字典内保存有量化模型第一层(quant)的zero_point和scale。
+[img_quant_export.py](img_quant_export.py)定义了img_quant_export()方法，将输入图片像素量化为uint8类型，并保存到txt以及coe文件中，供硬件使用。这相当于在计算机上提前完成了浮点输入数据的量化工作，量化过程需要用到量化模型scale参数字典(scale_dict)和zero_point参数字典， 该字典内保存有量化模型第一层(quant)的zero_point和scale。
 
 #### 定点计算参考代码
 
